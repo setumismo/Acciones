@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-R">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mi Cartera (Datos Dinámicos)</title>
     <style>
@@ -38,12 +38,24 @@
             color: #0066cc;
             text-decoration: none;
             font-weight: bold;
-            display: block; /* Hace que toda la celda sea clicable si solo hay un enlace */
+            display: block; 
+            height: 100%;
+            width: 100%;
         }
         a:hover {
             text-decoration: underline;
         }
-        /* Estilo para la celda de carga */
+        
+        /* --- AJUSTE DE ANCHOS DE COLUMNA --- */
+        th:nth-child(1), td:nth-child(1) { width: 10%; } /* Siglas */
+        th:nth-child(2), td:nth-child(2) { width: 15%; } /* Mercado */
+        th:nth-child(3), td:nth-child(3) { width: 50%; } /* Nombre */
+        th:nth-child(4), td:nth-child(4) { 
+            width: 25%; 
+            text-align: right; /* Alinea el valor a la derecha */
+        }
+        /* --- FIN DE AJUSTES --- */
+
         .cargando {
             text-align: center;
             padding: 40px;
@@ -73,59 +85,74 @@
     </table>
 
     <script>
-        // 1. Esta es tu URL de Google Sheets (formato CSV)
         const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR9FD87KDQlxTg7zuTUWm0LVEswG2CyuWwfgbfTDvkHtgL40G-2kigq9FnHrmmMUekC_Nji87raOLGa/pub?gid=501210043&single=true&output=csv';
 
-        // 2. Esta función se ejecuta cuando se carga la página
         document.addEventListener("DOMContentLoaded", () => {
             cargarDatosDeLaHoja();
         });
+
+        // --- NUEVA FUNCIÓN PARA GENERAR LOS ENLACES ---
+        function generarUrl(siglas, mercado) {
+            // 1. Casos especiales (Bonos y ETFs no-Google)
+            switch (siglas) {
+                case 'UETW':
+                    return 'https://www.justetf.com/en/etf-profile.html?isin=IE00BD4TXV59';
+                case "US-T GOVT 5 May15'45":
+                    return 'https://public.com/bonds/treasury/united-states/ust-5.0-05-15-2045-912810ul0';
+                case "US-T GOVT 4,75 Aug15'55":
+                    return 'https://public.com/bonds/treasury/united-states/ust-4.75-08-15-2055-912810um8';
+            }
+
+            // 2. Lógica para Google Finance
+            let tickerLimpio = siglas.replace(/ /g, '.'); // Convierte "BRK B" en "BRK.B"
+            let mercadoLimpio = mercado.replace('NASDAQ NM', 'NASDAQ').replace('NASDAQ NMB', 'NASDAQ'); // Acorta nombres
+            
+            return `https://www.google.com/finance/quote/${tickerLimpio}:${mercadoLimpio}`;
+        }
 
         async function cargarDatosDeLaHoja() {
             const cuerpoTabla = document.getElementById("tabla-cuerpo");
             
             try {
-                // 3. Intenta descargar el archivo CSV
-                // Añadimos un parámetro 'cache-bust' para evitar la caché de GitHub/Google
-                const respuesta = await fetch(`${csvUrl}&_=${new Date().getTime()}`);
+                const respuesta = await fetch(`${csvUrl}&_=${new Date().getTime()}`); // Evita la caché
                 if (!respuesta.ok) {
-                    throw new Error("No se pudo cargar la hoja de cálculo. ¿Está publicada correctamente?");
+                    throw new Error("No se pudo cargar la hoja de cálculo. ¿Está publicada?");
                 }
                 
                 const datosCsv = await respuesta.text();
+                const filas = datosCsv.split("\n").filter(Boolean);
                 
-                // 4. Procesa el CSV
-                const filas = datosCsv.split("\n").filter(Boolean); // Divide por líneas y quita líneas vacías
-                
-                let htmlParaTabla = ""; // Variable para ir guardando el HTML
+                let htmlParaTabla = "";
                 
                 filas.forEach(filaCsv => {
-                    // Divide cada línea por las comas
-                    // Ojo: Esto es simple, si tus nombres tienen comas, fallará.
-                    const columnas = filaCsv.split(","); 
+                    const columnas = filaCsv.split(",");
                     
-                    const siglas = columnas[0];
-                    const mercado = columnas[1];
-                    const nombre = columnas[2];
-                    const valor = columnas[3];
-                    const url = columnas[4];
+                    // --- LIMPIEZA DE DATOS ---
+                    // trim() quita espacios. replace() quita las comillas.
+                    const siglas = columnas[0].trim().replace(/"/g, '');
+                    const mercado = columnas[1].trim().replace(/"/g, '');
+                    const nombre = columnas[2].trim().replace(/"/g, '');
+                    const valor = columnas[3].trim().replace(/"/g, '');
                     
-                    // 5. Crea el HTML para esta fila
-                    let valorFormateado = valor;
+                    // --- NUEVA LÓGICA DE ENLACES ---
+                    const url = generarUrl(siglas, mercado);
+                    
+                    // --- FORMATEO DE DECIMALES ---
+                    let valorFormateado = valor; // Valor por defecto si no es un número
                     try {
-                        // Intenta formatear el valor como un número con 2 decimales
                         const valorNumerico = parseFloat(valor);
                         if (!isNaN(valorNumerico)) {
+                            // Si es un número, formatea a 2 decimales
                             valorFormateado = valorNumerico.toFixed(2);
                         }
                     } catch (e) {
-                        // Si falla, usa el valor tal cual (ej. "N/A", "#ERROR!")
+                        // Si falla, se queda como texto (ej. "N/A")
                     }
 
                     // Crea el enlace
+                    // El "valorFormateado" ahora es el texto clicable
                     const celdaValor = `<a href="${url}" target="_blank" rel="noopener noreferrer">${valorFormateado}</a>`;
                     
-                    // Añade la fila completa al HTML
                     htmlParaTabla += `
                         <tr>
                             <td>${siglas}</td>
@@ -136,11 +163,9 @@
                     `;
                 });
                 
-                // 6. Inserta todo el HTML nuevo en la tabla
                 cuerpoTabla.innerHTML = htmlParaTabla;
 
             } catch (error) {
-                // 7. Si algo falla, muestra un error
                 console.error("Error al cargar datos:", error);
                 cuerpoTabla.innerHTML = `<tr><td colspan="4" class="cargando" style="color: red;">Error al cargar: ${error.message}</td></tr>`;
             }
